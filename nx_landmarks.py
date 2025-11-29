@@ -4,7 +4,7 @@
 #
 import networkx as nx
 import numpy as np
-
+import math
 
 class selection_strategies:    
     def __init__(self):
@@ -78,8 +78,58 @@ class landmarks:
             pass
             #check weather the captures are found and then confirm / deny lower upper bound 
 
-    def mixed_strategies_init():
+    def mixed_strategies_init(self,strategies,strategy_params=None):
+        G=self.graph
+        d=self.d
+        total_ratio = sum(r for _, r in strategies)
+        if total_ratio <= 0:
+            raise ValueError("Sum of strategy ratios must be > 0")
+        normalized = [(name, r / total_ratio) for name, r in strategies]
+
+        ranking_funcs = {
+            "rand": selection_strategies.random_ranking,
+            "deg": selection_strategies.degree_ranking,
+            "close": selection_strategies.closeness_ranking,
+            "between": selection_strategies.betweeness_ranking,
+        }
+        rankings = {}
+        quotas = {}
+
+        for idx, (name, ratio) in enumerate(normalized):
+            if name not in ranking_funcs:
+                raise ValueError(f"Unknown strategy: {name}")
+
+            ranking = ranking_funcs[name](G)
+            rankings[name] = list(ranking)
+            if idx < len(normalized) - 1:
+                quotas[name] = int(d * ratio)
+            else:
+                quotas[name] = 0 
+
+        used_quota = sum(quotas[name] for name, _ in normalized[:-1])
+        last_name = normalized[-1][0]
+        quotas[last_name] = max(d - used_quota, 0)
+
         landmarks = []
+        used = set()
+        for idx, (name, _) in enumerate(normalized):
+            ranking = rankings[name]
+            if idx < len(normalized) - 1:
+                target_total = len(landmarks) + quotas[name]
+            else:
+                target_total = d
+            i_rank = 0
+            while len(landmarks) < target_total and i_rank < len(ranking):
+                v = ranking[i_rank]
+                i_rank += 1
+                if v in used:
+                    continue
+                used.add(v)
+                landmarks.append(v)
+
+            if len(landmarks) >= d:
+                break
+            self.landmarks = landmarks
         return landmarks
 
     def add_landmarks(self, n:int = 1):
