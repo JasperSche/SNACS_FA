@@ -39,19 +39,24 @@ class selection_strategies:
         return [c[0] for c in betweeness]
 
 class landmarks:
-    def __init__(self, G:nx.classes.graph.Graph, d:int = 1, selection_strategie:str = "rand", h:int = 0):
+    def __init__(self, G:nx.classes.graph.Graph, d:int = 1, selection_strategie:list = "deg", h:int = 0):
         self.graph = G
         self.d = d
         self.h = h
-        supported_rankings = {
+        self.supported_rankings = {
             'rand': selection_strategies.random_ranking,
             'deg': selection_strategies.degree_ranking,
             'close': selection_strategies.closeness_ranking,
             'between':selection_strategies.betweeness_ranking
         }
 
-        self.selection_strategie = supported_rankings[selection_strategie]
-        self.landmark_ranking = self.selection_strategie(G)
+        if len(selection_strategie) == 1:
+            self.selection_strategie = self.supported_rankings[selection_strategie[0]]
+            self.landmark_ranking = self.selection_strategie(G)
+        else:
+            self.selection_strategie = self.mixed_strategies_init
+            self.landmark_ranking = self.selection_strategie(selection_strategie)
+
         self.landmarks = None
         self.embeddings = None
 
@@ -94,59 +99,28 @@ class landmarks:
             pass
             #check weather the captures are found and then confirm / deny lower upper bound 
 
-    def mixed_strategies_init(self,strategies,strategy_params=None):
-        G=self.graph
-        d=self.d
-        total_ratio = sum(r for _, r in strategies)
-        if total_ratio <= 0:
-            raise ValueError("Sum of strategy ratios must be > 0")
-        normalized = [(name, r / total_ratio) for name, r in strategies]
+    def mixed_strategies_init(self,strategies):
+        rankings = []
+        for strat in strategies:
+            this_strat = self.supported_rankings[strat[0]]
+            this_ranking = this_strat(self.graph)
+            rankings.append((this_ranking, strat[1]))
+                    
+        landmarks_ranking = {}
+        for ranking in rankings:
+            ranks  = np.arange(len(ranking[0]))[::-1]
+            norm_rank  = (ranks - ranks.min()) / (ranks.max() - ranks.min())
+            weighted_rank = norm_rank*ranking[1]
+            for idx, node in enumerate(ranking[0]):
+                score = weighted_rank[idx]
+                if node in landmarks_ranking.keys():
+                    if landmarks_ranking[node]< score: landmarks_ranking[node] = score 
+                else:
+                    landmarks_ranking[node] = score
 
-        ranking_funcs = {
-            "rand": selection_strategies.random_ranking,
-            "deg": selection_strategies.degree_ranking,
-            "close": selection_strategies.closeness_ranking,
-            "between": selection_strategies.betweeness_ranking,
-        }
-        rankings = {}
-        quotas = {}
+        landmarks_ranking = [k for k, v in sorted(landmarks_ranking.items(), key=lambda item: item[1], reverse=True)]
 
-        for idx, (name, ratio) in enumerate(normalized):
-            if name not in ranking_funcs:
-                raise ValueError(f"Unknown strategy: {name}")
-
-            ranking = ranking_funcs[name](G)
-            rankings[name] = list(ranking)
-            if idx < len(normalized) - 1:
-                quotas[name] = int(d * ratio)
-            else:
-                quotas[name] = 0 
-
-        used_quota = sum(quotas[name] for name, _ in normalized[:-1])
-        last_name = normalized[-1][0]
-        quotas[last_name] = max(d - used_quota, 0)
-
-        landmarks = []
-        used = set()
-        for idx, (name, _) in enumerate(normalized):
-            ranking = rankings[name]
-            if idx < len(normalized) - 1:
-                target_total = len(landmarks) + quotas[name]
-            else:
-                target_total = d
-            i_rank = 0
-            while len(landmarks) < target_total and i_rank < len(ranking):
-                v = ranking[i_rank]
-                i_rank += 1
-                if v in used:
-                    continue
-                used.add(v)
-                landmarks.append(v)
-
-            if len(landmarks) >= d:
-                break
-        self.landmarks = landmarks
-        
+        return landmarks_ranking
 
     def add_landmarks(self, n:int = 1):
         x = np.where(self.landmark_ranking == self.landmarks[-1])
