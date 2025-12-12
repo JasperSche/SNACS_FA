@@ -5,21 +5,34 @@
 import networkx as nx
 import numpy as np
 import math
+import random
 
 class selection_strategies:    
     def __init__(self):
         pass
+    
     def degree_ranking(G:nx.classes.graph.Graph)->list:
         degree = sorted([(v,(G.degree(v))) for v in G], key=lambda tup: tup[1], reverse=True)
         return [d[0] for d in degree]
-    def closeness_ranking(G:nx.classes.graph.Graph)->list:
-        closeness = nx.closeness_centrality(G)
+    
+    def closeness_ranking(G:nx.classes.graph.Graph, k:int = 500)->list:
+        nodes = list(G.nodes())
+        sample = random.sample(nodes, min(k, len(nodes)))
+        closeness = {v: 0 for v in nodes}
+        for s in sample:
+            lengths = nx.single_source_shortest_path_length(G, s)
+            for v, d in lengths.items():
+                closeness[v] += d
+                
+        closeness = {v: (k / closeness[v]) if closeness[v] > 0 else 0 for v in nodes}
         closeness = sorted([(k,v) for k,v in zip(closeness.keys(), closeness.values())] , key= lambda tup: tup[1], reverse=True)
         return [c[0] for c in closeness]
+    
     def random_ranking(G:nx.classes.graph.Graph)->list:
         sample = np.array(G.nodes)
         np.random.shuffle(sample)
         return sample
+    
     def betweeness_ranking(G:nx.classes.graph.Graph, k:int=500)->list:
         betweeness = nx.betweenness_centrality(G, 500)
         betweeness = sorted([(k,v) for k,v in zip(betweeness.keys(), betweeness.values())] , key= lambda tup: tup[1], reverse=True)
@@ -43,6 +56,9 @@ class landmarks:
         self.embeddings = None
 
     def get_landmarks(self):
+        if self.landmarks != None:
+            self.landmarks = None
+            self.embeddings = None 
         landmarks = []
         embeddings = np.full((self.graph.number_of_nodes(),self.d), np.inf)
         x = 0 
@@ -129,8 +145,8 @@ class landmarks:
 
             if len(landmarks) >= d:
                 break
-            self.landmarks = landmarks
-        return landmarks
+        self.landmarks = landmarks
+        
 
     def add_landmarks(self, n:int = 1):
         x = np.where(self.landmark_ranking == self.landmarks[-1])
