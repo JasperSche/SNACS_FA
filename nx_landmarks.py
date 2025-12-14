@@ -47,7 +47,7 @@ class selection_strategies:
         while ranking:
             output.append(ranking.popleft())
             if ranking:
-                output.append(ranking.popright())
+                output.append(ranking.pop())
         return output
 
 class landmarks:
