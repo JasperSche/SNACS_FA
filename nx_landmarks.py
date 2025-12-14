@@ -5,6 +5,7 @@
 import networkx as nx
 import numpy as np
 import cpnet
+from collections import deque
 import random
 
 class selection_strategies:    
@@ -38,9 +39,16 @@ class selection_strategies:
         betweenness = sorted([(k,v) for k,v in zip(betweenness.keys(), betweenness.values())] , key= lambda tup: tup[1], reverse=True)
         return [c[0] for c in betweenness]
 
-    def core_periphery_sampling(G:nx.classes.graph.Graph)->list:
-    
-        return 
+    def iterative_sampling( G:nx.classes.graph.Graph, ranking:list = None)->list:
+        if ranking == None:
+            ranking = selection_strategies.betweenness_ranking(G)
+        ranking = deque(ranking)
+        output = []
+        while ranking:
+            output.append(ranking.popleft())
+            if ranking:
+                output.append(ranking.popright())
+        return output
 
 class landmarks:
     def __init__(self, G:nx.classes.graph.Graph, d:int = 1, selection_strategie:list = "deg", h:int = 0,precomputed = None):
@@ -52,14 +60,16 @@ class landmarks:
             'rand': selection_strategies.random_ranking,
             'deg': selection_strategies.degree_ranking,
             'close': selection_strategies.closeness_ranking,
-            'between':selection_strategies.betweenness_ranking
+            'between':selection_strategies.betweenness_ranking,
+            'iterative':selection_strategies.iterative_sampling
         }
         self.computed_rankings = {
             'rand': None,
             'deg': None,
             'close': None,
             'between': None,
-            'mixed': None
+            'mixed': None,
+            'iterative': None,
         }
         if precomputed != None:
             for key in precomputed.keys():
@@ -105,20 +115,27 @@ class landmarks:
         return int(max(abs(lowers)))
     
     def shortest_path_estimation_capture_method(self,source, target):
-        lower =  max(abs(self.embeddings[source]-self.embeddings[target]))
+        lowers =  abs(self.embeddings[source]-self.embeddings[target])
+        lower =  max(lowers)
         uppers =  self.embeddings[source]+self.embeddings[target]
         upper =  min(uppers)
         if upper == lower: return upper
         upper_landmarks = [i for i, v in enumerate(uppers) if v == upper]
-        D_matrix = self.embeddings[self.landmarks[upper_landmarks]]
-        s_Matrix = self.embeddings[source]+self.embeddings[source][upper_landmarks].reshape(-1,1)
-        t_Matrix = self.embeddings[source]+self.embeddings[source][upper_landmarks].reshape(-1,1)
-        captures_source = self.landmarks[np.where((s_Matrix-D_matrix) == 0)[0]]
-        captures_target = self.landmarks[np.where((t_Matrix-D_matrix) == 0)[0]]
-        if len(captures_source) == 0 or len(captures_target) == 0:
+        lower_landmarks = [i for i, v in enumerate(lowers) if v == lower]
+        if len(upper_landmarks) == 1:
             return upper
-        else:
-            return upper-1 
+        
+        D_matrix = self.embeddings[self.landmarks]
+        s_matrix = (self.embeddings[source]+self.embeddings[source].reshape(-1,1))
+        t_matrix = (self.embeddings[target]+self.embeddings[target].reshape(-1,1))
+        capture_s = np.where(((s_matrix-D_matrix)[upper_landmarks][:,lower_landmarks]) == 0)
+        capture_t = np.where(((t_matrix-D_matrix)[upper_landmarks][:,lower_landmarks]) == 0)
+        capture_s = [(upper_landmarks[a],lower_landmarks[b]) for a,b in zip(capture_s[0],capture_s[1])]
+        capture_t = [(upper_landmarks[a],lower_landmarks[b]) for a,b in zip(capture_t[0],capture_t[1])]
+
+        if len(capture_s)+len(capture_t) != 0:
+            return upper-1
+        return upper 
 
     def mixed_strategies_init(self):
         rankings = []
